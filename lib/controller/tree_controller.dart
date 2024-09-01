@@ -65,27 +65,39 @@ class TreeController extends BaseStore {
     }
 
     nodesToTree(
-      reverseIndex.allNodes.where((final TreeNode node) => node.parent == null),
+      reverseIndex.rootNodes,
     );
   }
 
   void searchAndFilterTree(
     final String query, {
-    final SensorType? sensorType,
-    final SensorStatus? status,
+    required final bool energySensor,
+    required final bool criticalStatus,
   }) {
+    if (query.isEmpty && !energySensor && !criticalStatus) {
+      nodesToTree(
+        reverseIndex.rootNodes.map(
+          (final TreeNode node) {
+            node.isExpanded = false;
+            return node;
+          },
+        ),
+      );
+      return;
+    }
+
     final Set<int> matchingIndices = <int>{};
 
     if (query.isNotEmpty) {
       matchingIndices.addAll(reverseIndex.searchByName(query));
-    } else if (sensorType != null) {
-      matchingIndices.addAll(reverseIndex.searchBySensorType(sensorType));
-    } else if (status != null) {
-      matchingIndices.addAll(reverseIndex.searchByStatus(status));
+    } else if (energySensor) {
+      matchingIndices.addAll(reverseIndex.energySensorIndices);
+    } else if (criticalStatus) {
+      matchingIndices.addAll(reverseIndex.criticalSensors);
     }
 
-    final Iterable<TreeNode> matchingNodes = matchingIndices.map(
-      (final int index) => reverseIndex.allNodes[index],
+    final Iterable<TreeNode> matchingNodes = reverseIndex.rootFromIndices(
+      matchingIndices,
     );
 
     nodesToTree(matchingNodes);

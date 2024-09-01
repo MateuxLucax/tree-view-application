@@ -20,4 +20,12 @@ class TreeNode {
   SensorStatus? status;
   TreeNode? parent;
   bool isExpanded = false;
+
+  @override
+  bool operator ==(final Object other) =>
+      identical(this, other) ||
+      other is TreeNode && runtimeType == other.runtimeType && id == other.id;
+
+  @override
+  int get hashCode => id.hashCode;
 }

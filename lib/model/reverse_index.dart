@@ -4,17 +4,18 @@ import 'tree_node.dart';
 
 class ReverseIndex {
   final Map<String, int> idIndex = <String, int>{};
+
   // Can be optimized with a stemming algorithm (RSLP https://www.inf.ufrgs.br/~viviane/rslp/index.htm (I have one made in JS))
   final Map<String, List<int>> nameIndex = <String, List<int>>{};
-  final Map<SensorType, List<int>> sensorTypeIndex = <SensorType, List<int>>{};
-  final Map<SensorStatus, List<int>> statusIndex = <SensorStatus, List<int>>{};
+  final List<int> energySensors = <int>[];
+  final List<int> criticalSensors = <int>[];
   final List<TreeNode> allNodes = <TreeNode>[];
 
   void clear() {
     idIndex.clear();
     nameIndex.clear();
-    sensorTypeIndex.clear();
-    statusIndex.clear();
+    energySensors.clear();
+    criticalSensors.clear();
     allNodes.clear();
   }
 
@@ -24,38 +25,54 @@ class ReverseIndex {
   ) {
     allNodes.add(node);
     idIndex.putIfAbsent(node.id, () => index);
-    nameIndex.putIfAbsent(node.name, () => <int>[]).add(index);
+    nameIndex.putIfAbsent(node.name.toLowerCase(), () => <int>[]).add(index);
 
     final SensorType? sensorType = node.sensorType;
-    if (sensorType != null) {
-      sensorTypeIndex.putIfAbsent(sensorType, () => <int>[]).add(index);
+    if (sensorType != null && sensorType == SensorType.energy) {
+      energySensors.add(index);
     }
 
     final SensorStatus? status = node.status;
-    if (status != null) {
-      statusIndex.putIfAbsent(status, () => <int>[]).add(index);
+    if (status != null && status == SensorStatus.alert) {
+      criticalSensors.add(index);
     }
   }
 
   List<int> searchByName(
     final String name,
   ) =>
-      nameIndex[name] ?? <int>[];
+      nameIndex[name.toLowerCase()] ?? <int>[];
 
-  List<int> searchBySensorType(
-    final SensorType sensorType,
-  ) =>
-      sensorTypeIndex[sensorType] ?? <int>[];
+  List<int> get energySensorIndices => energySensors;
 
-  List<int> searchByStatus(
-    final SensorStatus status,
-  ) =>
-      statusIndex[status] ?? <int>[];
+  List<int> get criticalSensorIndices => criticalSensors;
 
-  List<TreeNode> getNodes(
-    final List<int> indices,
+  Iterable<TreeNode> getNodes(
+    final Iterable<int> indices,
   ) =>
-      indices.map((final int index) => allNodes[index]).toList();
+      indices.map((final int index) => allNodes[index]);
+
+  Iterable<TreeNode> rootFromIndices(
+    final Iterable<int> indices,
+  ) {
+    final Set<TreeNode> roots = <TreeNode>{};
+
+    for (final int index in indices) {
+      final TreeNode node = allNodes[index]..isExpanded = true;
+      TreeNode? currentNode = node;
+
+      while (currentNode != null) {
+        currentNode.isExpanded = true;
+        if (currentNode.parent == null) {
+          roots.add(currentNode);
+          break;
+        }
+        currentNode = currentNode.parent;
+      }
+    }
+
+    return roots;
+  }
 
   TreeNode? findNodeById(
     final String? id,
@@ -66,5 +83,9 @@ class ReverseIndex {
     return allNodes[index];
   }
 
-  int get lastIndex => allNodes.isEmpty ? 0 : allNodes.length - 1;
+  int get lastIndex => allNodes.length;
+
+  Iterable<TreeNode> get rootNodes => allNodes.where(
+        (final TreeNode node) => node.parent == null,
+      );
 }

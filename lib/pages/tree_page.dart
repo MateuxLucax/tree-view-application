@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../controller/tree_controller.dart';
 import '../model/company.dart';
 import '../state/tree_state.dart';
+import '../widgets/search_panel_widget.dart';
 import '../widgets/tree_node_widget.dart';
 
 class TreePage extends StatefulWidget {
@@ -48,8 +49,24 @@ class _TreePageState extends State<TreePage> {
         title: Text(widget.company.name),
       ),
       body: switch (state) {
-        TreeLoaded() => ListView(
-            children: state.tree.map<Widget>(TreeNodeWidget.new).toList(),
+        TreeLoaded() => Column(
+            children: <Widget>[
+              SearchPanelWidget(
+                onSearch: controller.searchAndFilterTree,
+              ),
+              const Divider(),
+              if (state.tree.isEmpty)
+                const Center(
+                  child: Text('No results found'),
+                )
+              else
+                Expanded(
+                  child: ListView(
+                    children:
+                        state.tree.map<Widget>(TreeNodeWidget.new).toList(),
+                  ),
+                ),
+            ],
           ),
         TreeError() => Column(
             children: <Widget>[

@@ -2,8 +2,7 @@ import 'package:flutter/material.dart';
 
 enum SensorStatus {
   operating,
-  alert,
-  critical;
+  alert;
 
   Widget get icon {
     switch (this) {
@@ -21,13 +20,6 @@ enum SensorStatus {
           size: 24,
           semanticLabel: 'Alert',
         );
-      case critical:
-        return const Icon(
-          Icons.error,
-          color: Colors.red,
-          size: 24,
-          semanticLabel: 'Critical',
-        );
     }
   }
 
@@ -37,8 +29,6 @@ enum SensorStatus {
         return operating;
       case 'alert':
         return alert;
-      case 'critical':
-        return critical;
       default:
         return null;
     }
