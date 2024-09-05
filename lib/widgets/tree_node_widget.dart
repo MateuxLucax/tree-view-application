@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../model/node_type.dart';
 import '../model/sensor_status.dart';
 import '../model/sensor_type.dart';
 import '../model/tree_node.dart';
@@ -19,8 +20,12 @@ class _TreeNodeWidgetState extends State<TreeNodeWidget> {
     final TreeNode node = widget.node;
     final SensorType? sensorType = node.sensorType;
     final SensorStatus? status = node.status;
-    final bool hasParent = node.parent != null;
+    final TreeNode? parent = node.parent;
+    final bool hasParent = parent != null && parent.type != NodeType.root;
     final bool hasChildren = node.children.isNotEmpty;
+    // final bool isFiltered = node.isFiltered;
+
+    // if (isFiltered) return const SizedBox.shrink();
 
     final ListTile header = ListTile(
       title: Row(
@@ -62,12 +67,14 @@ class _TreeNodeWidgetState extends State<TreeNodeWidget> {
     return Column(
       children: <Widget>[
         header,
-        ...node.children.map<Widget>(
-          (final TreeNode node) => Padding(
-            padding: const EdgeInsets.only(left: 16),
-            child: TreeNodeWidget(node),
-          ),
-        ),
+        ...node.children
+            .where((final TreeNode node) => !node.isFiltered)
+            .map<Widget>(
+              (final TreeNode node) => Padding(
+                padding: const EdgeInsets.only(left: 16),
+                child: TreeNodeWidget(node),
+              ),
+            ),
       ],
     );
   }

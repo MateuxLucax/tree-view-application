@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../controller/tree_controller.dart';
 import '../model/company.dart';
+import '../model/tree_node.dart';
 import '../state/tree_state.dart';
 import '../widgets/search_panel_widget.dart';
 import '../widgets/tree_node_widget.dart';
@@ -52,18 +53,23 @@ class _TreePageState extends State<TreePage> {
         TreeLoaded() => Column(
             children: <Widget>[
               SearchPanelWidget(
-                onSearch: controller.searchAndFilterTree,
+                onSearch: controller.filter,
+                filterParams: state.filterParams,
               ),
               const Divider(),
-              if (state.tree.isEmpty)
+              if (state.root.children.every(
+                (final TreeNode node) => node.isFiltered,
+              ))
                 const Center(
                   child: Text('No results found'),
                 )
               else
                 Expanded(
                   child: ListView(
-                    children:
-                        state.tree.map<Widget>(TreeNodeWidget.new).toList(),
+                    children: state.root.children
+                        .where((final TreeNode node) => !node.isFiltered)
+                        .map<Widget>(TreeNodeWidget.new)
+                        .toList(),
                   ),
                 ),
             ],

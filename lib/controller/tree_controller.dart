@@ -1,134 +1,151 @@
-import '../model/asset.dart';
-import '../model/location.dart';
-import '../model/node_type.dart';
-import '../model/reverse_index.dart';
+import 'package:flutter/foundation.dart';
+
+import '../model/filter_params.dart';
 import '../model/sensor_status.dart';
 import '../model/sensor_type.dart';
+import '../model/tree_index.dart';
 import '../model/tree_node.dart';
 import '../repository/tree_repository.dart';
 import '../state/tree_state.dart';
 import '../store/base_store.dart';
 
+typedef FilterFunction = bool Function(TreeNode);
+
 class TreeController extends BaseStore {
-  final ReverseIndex reverseIndex = ReverseIndex();
   final ITreeRepository repository = TractianApiTreeRepository();
   TreeState state = TreeLoading();
+  final List<FilterFunction> _filters = <FilterFunction>[];
+  TreeIndex index = TreeIndex();
 
-  void buildTreeAndIndex(
-    final List<Location> locations,
-    final List<Asset> assets,
-  ) {
-    reverseIndex.clear();
-    locations.sort((final Location a, final Location b) {
-      if (a.parentId == null && b.parentId != null) return -1;
-      if (a.parentId != null && b.parentId == null) return 1;
+  Future<void> filter(final FilterParams params) async {
+    final TreeState state = this.state;
+    if (state is! TreeLoaded) return Future<void>.value();
 
-      return a.id.compareTo(b.id);
-    });
+    this.state = TreeLoading();
+    notifyListeners();
 
-    for (final Location location in locations) {
-      final TreeNode node = TreeNode(
-        id: location.id,
-        name: location.name,
-        type: NodeType.location,
-        parent: reverseIndex.findNodeById(location.parentId),
+    final String query = params.query;
+    final bool criticalStatus = params.criticalStatus;
+    final bool energySensor = params.energySensor;
+
+    if (query.isEmpty && !criticalStatus && !energySensor) {
+      index.nodesById.forEach((final String key, final TreeNode node) {
+        node
+          ..isExpanded = false
+          ..isFiltered = false;
+      });
+      this.state = TreeLoaded(
+        root: state.root,
+        filterParams: FilterParams.empty(),
       );
-
-      node.parent?.children.add(node);
-      reverseIndex.addToIndex(node, reverseIndex.lastIndex);
-    }
-
-    assets.sort((final Asset a, final Asset b) {
-      if (a.parentId == null && b.parentId != null) return -1;
-      if (a.parentId != null && b.parentId == null) return 1;
-
-      return a.id.compareTo(b.id);
-    });
-
-    for (final Asset asset in assets) {
-      final NodeType type = NodeType.fromSensorType(asset.sensorType);
-      final SensorType? sensorType = SensorType.fromString(asset.sensorType);
-      final SensorStatus? status = SensorStatus.fromString(asset.status);
-
-      final TreeNode node = TreeNode(
-        id: asset.id,
-        name: asset.name,
-        type: type,
-        parent: reverseIndex.findNodeById(asset.parentId) ??
-            reverseIndex.findNodeById(asset.locationId),
-        sensorType: sensorType,
-        status: status,
-      );
-
-      node.parent?.children.add(node);
-      reverseIndex.addToIndex(node, reverseIndex.lastIndex);
-    }
-
-    nodesToTree(
-      reverseIndex.rootNodes,
-    );
-  }
-
-  void searchAndFilterTree(
-    final String query, {
-    required final bool energySensor,
-    required final bool criticalStatus,
-  }) {
-    if (query.isEmpty && !energySensor && !criticalStatus) {
-      nodesToTree(
-        reverseIndex.rootNodes.map(
-          (final TreeNode node) {
-            node.isExpanded = false;
-            return node;
-          },
-        ),
-      );
+      notifyListeners();
       return;
     }
 
-    final Set<int> matchingIndices = <int>{};
-
+    index.nodesById.forEach((final String key, final TreeNode node) {
+      node
+        ..isExpanded = false
+        ..isFiltered = true;
+    });
+    _filters.clear();
     if (query.isNotEmpty) {
-      matchingIndices.addAll(reverseIndex.searchByName(query));
-    } else if (energySensor) {
-      matchingIndices.addAll(reverseIndex.energySensorIndices);
-    } else if (criticalStatus) {
-      matchingIndices.addAll(reverseIndex.criticalSensors);
+      _filters.add(
+        (final TreeNode node) => !node.name.toLowerCase().contains(
+              query.toLowerCase(),
+            ),
+      );
     }
 
-    final Iterable<TreeNode> matchingNodes = reverseIndex.rootFromIndices(
-      matchingIndices,
+    if (criticalStatus) {
+      _filters.add(
+        (final TreeNode node) => node.status != SensorStatus.alert,
+      );
+    }
+
+    if (energySensor) {
+      _filters.add(
+        (final TreeNode node) => node.sensorType != SensorType.energy,
+      );
+    }
+
+    final (TreeIndex updatedIndex, TreeNode updatedRoot) = await compute(
+      filterIndex,
+      (index, _filters),
     );
 
-    nodesToTree(matchingNodes);
-  }
+    index = updatedIndex;
 
-  void nodesToTree(final Iterable<TreeNode> nodes) {
-    final Set<TreeNode> resultNodes = <TreeNode>{};
-    for (final TreeNode node in nodes) {
-      resultNodes.add(node);
-      TreeNode? currentNode = node.parent;
-      while (currentNode != null) {
-        resultNodes.add(currentNode);
-        currentNode = currentNode.parent;
-      }
-    }
-
-    state = TreeLoaded(resultNodes.toList());
+    this.state = TreeLoaded(
+      root: updatedRoot,
+      filterParams: params,
+    );
     notifyListeners();
   }
 
   Future<void> loadAndBuildTree(final String companyId) async {
     try {
-      final List<Location> locations = await repository.fetchLocations(
+      final (TreeNode root, TreeIndex index) = await repository.fetchData(
         companyId,
       );
-      final List<Asset> assets = await repository.fetchAssets(companyId);
 
-      buildTreeAndIndex(locations, assets);
+      state = TreeLoaded(
+        root: root,
+        filterParams: FilterParams.empty(),
+      );
+      this.index = index;
+      notifyListeners();
     } catch (e) {
       state = TreeError(e.toString());
       notifyListeners();
     }
   }
+}
+
+Future<(TreeIndex, TreeNode)> filterIndex(
+  final (TreeIndex, List<FilterFunction>) indexAndFilters,
+) {
+  final (TreeIndex index, List<FilterFunction> filters) = indexAndFilters;
+
+  index.nodesById.forEach((final String key, final TreeNode node) {
+    final bool shouldFilter = filters.every(
+      (final FilterFunction filter) => filter(node),
+    );
+
+    if (shouldFilter && node.isFiltered) {
+      return;
+    }
+
+    node
+      ..isFiltered = false
+      ..isExpanded = true;
+
+    index.parentNodesOfId[node.id]?.forEach((final TreeNode node) {
+      node
+        ..isFiltered = false
+        ..isExpanded = true;
+    });
+    // index.childrenNodesOfId[node.id]?.forEach((final TreeNode node) {
+    //   node
+    //     ..isFiltered = false
+    //     ..isExpanded = true;
+
+    //   TreeNode? currentChild = node;
+    //   while (currentChild != null) {
+    //     currentChild
+    //       ..isFiltered = false
+    //       ..isExpanded = false;
+    //     currentChild = index.nodesById[currentChild.parentId];
+    //   }
+    // });
+  });
+
+  final TreeNode? root = index.nodesById['root'];
+
+  if (root == null) {
+    return Future<(TreeIndex, TreeNode)>.error(
+      Exception('Root node not found'),
+    );
+  }
+
+  return Future<(TreeIndex, TreeNode)>.value((index, root));
 }

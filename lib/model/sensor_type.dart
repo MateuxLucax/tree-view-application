@@ -15,6 +15,17 @@ enum SensorType {
     }
   }
 
+  static SensorType? fromIndex(final int index) {
+    switch (index) {
+      case 0:
+        return energy;
+      case 1:
+        return vibration;
+      default:
+        return null;
+    }
+  }
+
   Widget get icon {
     switch (this) {
       case energy:

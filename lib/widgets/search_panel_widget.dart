@@ -1,16 +1,20 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+
+import '../model/filter_params.dart';
 
 class SearchPanelWidget extends StatefulWidget {
   const SearchPanelWidget({
     required this.onSearch,
+    required this.filterParams,
     super.key,
   });
 
   final void Function(
-    String query, {
-    required bool energySensor,
-    required bool criticalStatus,
-  }) onSearch;
+    FilterParams params,
+  ) onSearch;
+  final FilterParams filterParams;
 
   @override
   State<SearchPanelWidget> createState() => _SearchPanelWidgetState();
@@ -21,11 +25,25 @@ class _SearchPanelWidgetState extends State<SearchPanelWidget> {
   bool isEnergySensorActive = false;
   bool isWarningActive = false;
 
+  final Debouncer debouncer = Debouncer(
+    duration: const Duration(milliseconds: 500),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    controller.text = widget.filterParams.query;
+    isEnergySensorActive = widget.filterParams.energySensor;
+    isWarningActive = widget.filterParams.criticalStatus;
+  }
+
   void handleSearch(final String query) {
     widget.onSearch(
-      query,
-      energySensor: isEnergySensorActive,
-      criticalStatus: isWarningActive,
+      FilterParams(
+        query: query,
+        energySensor: isEnergySensorActive,
+        criticalStatus: isWarningActive,
+      ),
     );
   }
 
@@ -38,7 +56,11 @@ class _SearchPanelWidgetState extends State<SearchPanelWidget> {
               hintText: 'Search',
               prefixIcon: Icon(Icons.search),
             ),
-            onChanged: handleSearch,
+            onChanged: (final String value) {
+              debouncer.run(() {
+                handleSearch(value);
+              });
+            },
           ),
           const SizedBox(height: 8),
           Row(
@@ -78,4 +100,18 @@ class _SearchPanelWidgetState extends State<SearchPanelWidget> {
           ),
         ],
       );
+}
+
+class Debouncer {
+  Debouncer({
+    required this.duration,
+  });
+
+  final Duration duration;
+  Timer? _timer;
+
+  void run(final VoidCallback action) {
+    _timer?.cancel();
+    _timer = Timer(duration, action);
+  }
 }
